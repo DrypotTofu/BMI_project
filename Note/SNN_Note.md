@@ -64,7 +64,7 @@ SNN是第三代神经网络，其架构由相互连接的神经元和突触组�
 
 其数学的定义如下
 $$C\frac{dV}{dt} = -g_L(V(t) - E_L) + I(t) $$ 我们可以看到 $V(t)$ 取决于电阻的电导率$g_L$，电容 $C$， 静息电压 $E_L$ 和电流源 $I(t)$. 如果我们将上式乘一个膜电阻常数 $R$，我们可以得到膜时间常数 $\tau_m = RC$ 表示的 $\frac{dV_{mem}}{dt}$:
-$$\tau_m\frac{dV_{mem}}{dt} = -[V_{mem}(t) - V_{rest}] + RI(t) $$ 这个方程可以通过向前欧拉方法求得数值解，LIF神经元的激活函数$A(t)$表示如下$$A(t) = \begin{cases}0, & \text{if } v_{mem} < v_{thresh} \\1, & \text{if } v_{mem} \geq v_{thresh}\end{cases} $$ 可以明显看到这是一个非线性函数
+$$\tau_m\frac{dV_{mem}}{dt} = -[V_{mem}(t) - V_{rest}] + RI(t) $$ 这个方程可以通过向前欧拉方法求得数值解，LIF神经元的激活函数$S(t)$表示如下$$S(t) = \begin{cases}0, & \text{if } v_{mem} < v_{thresh} \\1, & \text{if } v_{mem} \geq v_{thresh}\end{cases} $$ 可以明显看到这是一个非线性函数
 
 ##### Spike Response Model（SRM）
 
@@ -229,7 +229,70 @@ $$P(R_{ij} = 1) = X_{ij} = 1 - P(R_{ij} = 0)$$ 在时间步数上重复 $T$ 次�
 
 #### 简化的 LIF 神经元（Simplified Leaky Integrate-and-Fire Neuron）
 
-最基本的LIF神经元模型
+在前文中提到的LIF神经元比较复杂，增加了一系列需要调整的超参数，包括 $R$、$C$、$\Delta t$、$V_{rest}$ 以及重置机制的选择。这需要跟踪很多东西，当扩展到完整的 SNN 时，会更加繁琐。所以让我们做一些简化。
+
+我们知道可以使用向前欧拉方法得到LIF神经元的模型解如下
+$$U(t + \Delta t) = \left(1 - \frac{\Delta t}{\tau}\right)U(t) + \frac{\Delta t}{\tau}I_{\text{in}}(t)R$$ 假设没有输入电流，即$I_{in}(t) = 0A$，得到：
+$$U(t + \Delta t) = \left(1 - \frac{\Delta t}{\tau}\right)U(t)$$ 取$\beta = \frac{U(t+\Delta t)}{U(t)} = (1 - \frac{\Delta t}{\tau})$为默认情况下的膜电位衰减率，一般为了良好的精度，我们取$\Delta t \ll \tau$。
+
+进一步，如果我们假设$t$为单位时间步下（每个时间间隔短到神经元在这个时间段内最多只能发出一次脉冲）的离散时间变量，就可取$\Delta t = 1$，额外地，若取$R = 1$，则原始的模型解可被简化至如下形式：
+$$U[t + 1] = \beta U[t] + (1 - \beta) I_{\text{in}}[t+1]$$
+
+接下来，我们考虑学习的可行性，即对每一个可能得输入脉冲赋予权重系数，记权重矩阵为$W$，则有外源电流$I_{in}(t)$与输入$X(t)$关系$I_{in}(t) = WX(t)$，代入有
+$$U[t + 1] = \beta U[t] + (1 - \beta) WX[t+1]$$
+> 此处和上面的方程离散形式在源文档中或有笔误，但考虑到实际的实现，其实并不影响什么
+
+额外地，对上文中提到的脉冲触发与重置机制做如下的实现，如果膜电位超过阈值，神经元就会发出一个输出脉冲：
+$$S[t] = \begin{cases} 1, & \text{if } U[t] > U_{\text{thr}} \\ 0, & \text{otherwise} \end{cases}$$ 同时在触发后膜电位会重置，结合后得到表达式：
+$$U[t + 1] = \underbrace{\beta U[t]}_{\text{decay}} + \underbrace{W X[t+1]}_{\text{input}} - \underbrace{S[t] U_{\text{thr}}}_{\text{reset}}$$ 由于 $W$是可学习参数，而$U_{\text{thr}}$通常设置为 1（尽管可以调整），这使得衰减率$\beta$ 成为唯一需要指定的超参数，理论上$\beta = e^{-\frac{\Delta t}{\tau}}$，但在实际使用中我们往往只关注功能性上的实现，对$\beta$往往给定一个值。
+
+#### 前馈脉冲神经网络
+
+考虑利用 snnTorch 创建一个 784-1000-10 维的 3 层全连接神经网络。PyTorch 用于形成神经元之间的连接，而 snnTorch 用于创建神经元。需要注意的是，snnTorch使用时间优先的维度，即
+$$[time \times batch\_size \times feature\_dimensions]$$ 其最终的结构大体如下
+
+#### 网络训练
+
+LIF神经元的离散形式几乎完美地契合了训练循环神经网络（RNNs）和基于序列的模型的发展。这通过隐式递归连接来表示膜电位的衰减，并区别于显式递归，其中输出脉冲$S_{\text{out}}$被反馈到输入。在下图中，权重为$-U_{\text{thr}}$的连接表示重置机制$R[t]$。
+> 训练RNN的关键是将模型按时序展开，然后使用BP，这种方式常被称作时序反向传播（BPTT）
+
+展开图的优点在于它提供了对计算如何执行的明确描述。展开过程展示了信息在时间上的正向流动（从左到右）以计算输出和损失，以及反向流动以计算梯度。模拟的时间步数越多，图就越深。
+
+假定在训练时我们有我们有一个损失函数$\mathcal{L}$，我们的目标是找到$W$使$L$最小化，一个关键的问题是SNN中的激活函数本身是不可微的，考虑$S$和$U$之间关系的一种替代方法
+$$S[t] = \Theta(U[t] - U_{\text{thr}})$$ 其中$\Theta(x) = \begin{cases} 1 \quad x \geq 0 \\ 0 \quad else \end{cases}$ 是 Heaviside 阶跃函数，其对应的导数是狄拉克函数 $\delta(x) $，满足 $(f, \delta)_{L_p} = f(0)$，根据链式法则，对于损失函数关于$W$的梯度有
+$$\frac{\partial L}{\partial W} = \frac{\partial L}{\partial S} \underbrace{\frac{\partial S}{\partial U}}_{\{0,\infty\}} \frac{\partial U}{\partial I} \frac{\partial I}{\partial W}
+\quad$$ 显然可见它在除阈值 $U_{\mathrm{thr}} = \theta$外的所有地方都等于 0，在阈值处趋于无穷大。这意味着梯度几乎总是为零（如果$U$ 精确位于阈值处则饱和，无法进行学习）， 这被称为死神经元问题。
+
+解决死亡神经元问题的最常见方法是在前向传播时保持 Heaviside 函数不变，但在反向传播时将数项 $\frac{\partial S}{\partial U}$替换为不会在反向传播中终止学习过程的其他项，该项将表示为$\frac{\partial \hat{S}}{\partial U}$。这听起来可能有些奇怪，但事实证明神经网络对这种近似非常鲁棒。这通常被称为替代梯度方法。
+
+使用替代梯度的方法有多种选择，snrTorch 中的默认方法是使用反正切函数平滑 Heaviside 函数。反向传播中使用的导数是：
+$$\frac{\partial \tilde{S}}{\partial \bar{U}} \leftarrow \frac{1}{\pi} \frac{1}{(1 + [U \pi]^2)}$$
+
+对于全局的损失函数，我们对每个时间步都计算损失，权重对当前和历史损失的影响必须加在一起来定义全局梯度，额外地，为了确保第$t$步后的参数不会对$t$步前的内容产生影响，我们还需要对其因果性进行限制，得到梯度如下：
+$$\frac{\partial\mathcal{L}}{\partial W}=\sum_{t}\frac{\partial\mathcal{L}[t]}{\partial W}=\sum_{t}\sum_{s\leq t}\frac{\partial\mathcal{L}[t]}{\partial W[s]}\frac{\partial W[s]}{\partial W}$$ 额外地，由于权重是全局共享的，因此我们有$W[s] = W$，即：
+$$\frac{\partial\mathcal{L}}{\partial W}=\sum_{t}\sum_{s < t}\frac{\partial\mathcal{L}[t]}{\partial W[s]}$$
+
+举个例子，仅隔离由$s = t - 1$产生的前向影响；这意味着反向传播必须按时间回溯一步。$W[t - 1]$对损失的影响可以表示为：
+$$\begin{aligned}\frac{\partial \mathcal{L}[t]}{\partial W[t - 1]} &= \frac{\partial \mathcal{L}[t]}{\partial \mathcal{S}[t]} \frac{\partial \mathcal{S}[t]}{\partial U[t]} \frac{\partial U[t]}{\partial U[t - 1]} \frac{\partial U[t - 1]}{\partial I[t - 1]} \frac{\partial I[t - 1]}{\partial W[t - 1]} \\ &= \frac{\partial \mathcal{L}[t]}{\partial \mathcal{S}[t]} \frac{1}{\pi} \frac{1}{(1 + [U \pi]^2)} \beta X[t-1]\end{aligned}$$
+
+结果上，对于单个神经元，它BPTT后可能如图下所示
+
+#### 损失函数与输出解码
+
+在ANN中，对于监督式多分类问题，会选取激活值最高的神经元，并将其视为预测类别，类似于前文提到的编码方式，对于SNN输出的脉冲序列，我们也将之分为速率和时间两种大类编码，不过不同的是，前文在嵌入，这里需要解释输出。
+
+让我们关注一种速率编码。当输入数据被传递到网络中时，我们希望正确的神经元类别在整个模拟运行过程中发出最多的尖峰。这对应于最高的平均放电频率。实现这一目标的一种方法是将正确类别的膜电位增加到 $U > U_{\mathrm{thr}}$，而将错误类别的膜电位增加到 $U < U_{\mathrm{thr}}$。将目标应用于 $U$ 作为调节尖峰行为的代理。
+
+这可以通过对输出神经元的膜电位取 softmax 来实现，其中 $C$是输出类别的数量：$$p_i[t] = \frac{e^{u_{i}[t]}}{\sum_{i=0}^{c} e^{u_{i}[t]}}$$
+> 为什么不对输出神经元的脉冲的速率编码做softmax？
+
+$p_i$与目标$y_i \in \{0, 1\}^C$（一个独热目标向量）之间的交叉熵是通过以下方式获得的：
+$$\mathcal{L}_{CE}[t] = - \sum_{i = 0}^{C} y_i \log(p_i[t])$$
+
+实际效果是，正确类别的膜电位被鼓励增加，而错误类别的膜电位则被降低。实际上，这意味着正确类别被鼓励在所有时间步都放电，而错误类别在所有时间步都被抑制。这可能不是 SNN 最有效的实现方式，但它是最简单的之一。
+
+这个目标应用于模拟的每个时间步，因此也在每个步骤中生成一个损失。这些损失在模拟结束时会被加在一起：
+$$\mathcal{L}_{CE} = \sum_{t} \mathcal{L}_{CE}[t]$$
 
 ## 论文阅读
 
