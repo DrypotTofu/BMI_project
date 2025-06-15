@@ -1,7 +1,5 @@
 # imports
 import snntorch as snn
-from snntorch import spikeplot as splt
-from snntorch import spikegen
 
 import torch
 import torch.nn as nn
@@ -9,8 +7,10 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
-import itertools
+import os
+import time
 
 # dataloader arguments
 batch_size = 128
@@ -101,11 +101,15 @@ def train_printer():
 loss = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=5e-4, betas=(0.9, 0.999))
 
-num_epochs = 1
+num_epochs = 5
 loss_hist = []
 test_loss_hist = []
 counter = 0
 
+os.makedirs("figure", exist_ok=True)
+os.makedirs("eval_result", exist_ok=True)
+
+train_start = time.time()
 # Outer training loop
 for epoch in range(num_epochs):
     iter_counter = 0
@@ -155,35 +159,58 @@ for epoch in range(num_epochs):
             counter += 1
             iter_counter +=1
 
-# Plot Loss
-fig = plt.figure(facecolor="w", figsize=(10, 5))
-plt.plot(loss_hist)
-plt.plot(test_loss_hist)
+train_end = time.time()
+train_time = train_end - train_start
+
+# Plot and save Loss
+plt.figure(figsize=(12, 6))
+sns.set(style="darkgrid")
+sns.lineplot(x=range(len(loss_hist)), y=loss_hist, linewidth=1)
 plt.title("Loss Curves")
-plt.legend(["Train Loss", "Test Loss"])
+plt.legend()
 plt.xlabel("Iteration")
 plt.ylabel("Loss")
-plt.show()
+plt.savefig("figure/tutorial_snn_MNIST_Loss.png")
+plt.close()
 
+# 评估准确率
 total = 0
 correct = 0
 
+eval_start = time.time()
 # drop_last switched to False to keep all samples
 test_loader = DataLoader(mnist_test, batch_size=batch_size, shuffle=True, drop_last=False)
 
 with torch.no_grad():
-  net.eval()
-  for data, targets in test_loader:
-    data = data.to(device)
-    targets = targets.to(device)
+    net.eval()
+    for data, targets in test_loader:
+        data = data.to(device)
+        targets = targets.to(device)
 
-    # forward pass
-    test_spk, _ = net(data.view(data.size(0), -1))
+        # forward pass
+        test_spk, _ = net(data.view(data.size(0), -1))
 
-    # calculate total accuracy
-    _, predicted = test_spk.sum(dim=0).max(1)
-    total += targets.size(0)
-    correct += (predicted == targets).sum().item()
+        # calculate total accuracy
+        _, predicted = test_spk.sum(dim=0).max(1)
+        total += targets.size(0)
+        correct += (predicted == targets).sum().item()
+eval_end = time.time()
+eval_time = eval_end - eval_start
 
+acc = 100 * correct / total
 print(f"Total correctly classified test set images: {correct}/{total}")
-print(f"Test Set Accuracy: {100 * correct / total:.2f}%")
+print(f"Test Set Accuracy: {acc:.2f}%")
+
+# 输出评估结果到Markdown文件
+model_name = "tutorial_snn_MNIST"
+result_md = f"""# tutorial_snn_MNIST 评估结果
+
+- **模型名称**: {model_name}
+- **训练时间**: {train_time:.2f} 秒
+- **评估时间**: {eval_time:.2f} 秒
+- **准确率**: {acc:.2f}%
+- **损失曲线文件**: figure/tutorial_snn_MNIST_Loss.png
+
+"""
+with open("eval_result/tutorial_snn_MNIST.txt", "w", encoding="utf-8") as f:
+    f.write(result_md)
