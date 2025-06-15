@@ -1,0 +1,8 @@
+# tutorial_snn_MNIST 评估结果
+
+- **模型名称**: tutorial_snn_MNIST
+- **训练时间**: 143.47 秒
+- **评估时间**: 1.54 秒
+- **准确率**: 97.47%
+- **损失曲线文件**: figure/tutorial_snn_MNIST_Loss.png
+

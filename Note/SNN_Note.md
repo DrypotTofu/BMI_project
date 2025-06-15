@@ -294,14 +294,34 @@ $$\mathcal{L}_{CE}[t] = - \sum_{i = 0}^{C} y_i \log(p_i[t])$$
 这个目标应用于模拟的每个时间步，因此也在每个步骤中生成一个损失。这些损失在模拟结束时会被加在一起：
 $$\mathcal{L}_{CE} = \sum_{t} \mathcal{L}_{CE}[t]$$
 
-## 论文阅读
+#### 具体实现与结果
 
-- 题目：
-- 作者：
-- 期刊会议时间：
-- 链接：
-- 研究背景：文章要解决的问题是什么
-- 研究动机：现有方法分别有什么缺陷，本文计算用什么方法来解决这些挑战
-- 核心技术：设计了什么算法或网络 ，分别解决了什么挑战。注意，多个技术一般对应于多个挑战。
-- 实验结果：结果处于近几个月以来的同任务论文里什么水平，可以放一些截图
-- 未来工作：后续可以改进的思路
+snnTorch中的教程代码请见[Example/SNN_snnTorch/tutorial_snn_MNIST.py](../Example/SNN_snnTorch/tutorial_snn_MNIST.py)，有对其做适当修改，个人通过PyTorch实现了类似的目标，代码请见[Example/SNN_PyTorch/simple_snn_MNIST.py](../Example/SNN_PyTorch/simple_snn_MNIST.py)。两个代码均搭建了一个简化LIF神经元三层全连接网络，每层单元数为734、1000、10，仿真时间步数为25步，使用ATAN做替代函数实现了BP，将静态数据在每个时间步中输入以完成对MNIST手写数字数据集的多分类任务，在A800上得到的结果如下：
+
+| 模型名称             | 训练时间 (秒) | 评估时间 (秒) | 准确率    |
+|----------------------|--------------|--------------|-----------|
+| tutorial_snn_MNIST   | 143.47       | 1.54         | 97.47%    |
+| simple_snn_MNIST     | 98.18        | 0.51         | 97.45%    |
+
+各自的Loss曲线图像如下：
+
+- tutorial_snn_MNIST:
+![tutorial_snn_MNIST.py](../Example/SNN_snnTorch/figure/tutorial_snn_MNIST_Loss.png){:height="80%" width="80%"}
+- simple_snn_MNIST
+![simple_snn_MNIST.py](../Example/SNN_PyTorch/figure/simple_snn_MNIST_Loss.png){:height="80%" width="80%"}
+
+#### 结果分析
+
+- `simple_snn_MNIST` 训练和评估速度显著快于 `tutorial_snn_MNIST`，训练时间减少约31%，评估时间减少约67%。可能原因如下：
+  - `simple_snn_MNIST.py` 采用了更高效的数据加载（`num_workers=2`、`pin_memory=True`），且评估时 `batch_size=1000`，大大加快了推理速度。
+  - 代码实现上，`simple_snn_MNIST` 的 forward 只返回最后一层的脉冲均值，损失和推理流程更简洁。
+  - `tutorial_snn_MNIST` 每个时间步都计算损失并累加，forward 过程记录了所有时间步的膜电位和脉冲，内存和计算量更大。
+- 两者准确率非常接近（97.47% vs 97.45%），说明 `simple_snn_MNIST` 已经能达到与 snntorch 官方教程几乎一致的效果。自定义的 LIF 神经元和替代梯度实现是有效的，且训练流程和超参数设置合理。
+
+#### 改进方向
+
+- **代码本身**：使用继承关系重写整个项目代码，使之兼容后续的工作，便于维护和管理。
+- **网络结构**：网络层数和宽度上可以进一步调整，同时由于这个网络架构的输入层784单元数和输出层10单元数对数据的针对性过强，不具有对其他数据集的泛用性。
+- **神经元**：完善LIF神经元功能（支持beta参数的可学习性），尝试不同的SNN神经元。
+- **损失函数与训练策略**：像snntorch那样，对每个时间步的输出都计算损失并累加，提升梯度流动。引入学习率衰减（如StepLR、CosineAnnealing等），提升收敛速度和最终性能。
+- **编码方式与数据处理**：将静态输入的MNIST转化为动态脉冲数据输入，相对符合现实情况，输出的数据如果是脉冲，需要进一步处理（现在的方式类似于速率编码，本质上相似），需要对时间编码做实现。
