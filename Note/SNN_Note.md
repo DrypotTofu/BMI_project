@@ -43,7 +43,7 @@ SNN是第三代神经网络，其架构由相互连接的神经元和突触组�
 
 ##### Hodgkin Huxley Model（H-H）
 
-这个模型基于电路的类似性来描述神经元的电活动。神经元的细胞膜相当于电路中的电容器，它可以储存电荷。而离子通道则是类似于电阻的元件，允许离子通过细胞膜，产生电流。模型的基本方程是根据电流平衡来建立的。对于一段神经纤维来说，总电流等于电容电流加上通过各种离子通道的电流之和。
+这个模型基于R-C电路的类似性来描述神经元的电活动。神经元的细胞膜相当于电路中的电容器，它可以储存电荷。而离子通道则是类似于电阻的元件，允许离子通过细胞膜，产生电流。模型的基本方程是根据电流平衡来建立的。对于一段神经纤维来说，总电流等于电容电流加上通过各种离子通道的电流之和。
 
 其数学的定义如下$$I =C_{m}\frac{dV}{dt}+I_{Na}+I_{K}+I_{L}$$ 其中，$I$是注入神经元的总电流；$C_{m}$是膜电容；$V$ 是膜电位；$I_{Na}$是钠离子电流；$I_{K}$是钾离子电流；$I_{L}$是漏电流（即少量不依赖电压的离子通过细胞膜产生的电流）。
 
@@ -63,8 +63,8 @@ SNN是第三代神经网络，其架构由相互连接的神经元和突触组�
 常用的神经元模型，因为它相对简单且能够模拟神经元的许多重要行为。它假设神经元的膜电位是由一个积分器和一个漏电导组成的。膜电位会随着时间的推移而积累输入的电流，同时也会因为漏电导而逐渐降低。当膜电位超过一定的阈值时，神经元会被激发，并产生一个动作电位。然后，膜电位会被重置到一个特定的重置值，并进入不应期，在这个期间内不会再次被激发。
 
 其数学的定义如下
-$$C\frac{dV}{dt} = -g_L(V(t) - E_L) + I(t) $$ 我们可以看到 $V(t)$ 取决于电阻的电导率$g_L$，电容 $C$， 静息电压 $E_L$ 和电流源 $I(t)$. 如果我们将上式乘一个膜电阻常数 $R$，我们可以得到膜时间常数 $\tau_m = RC$ 表示的 $\frac{dV_{mem}}{dt}$:
-$$\tau_m\frac{dV_{mem}}{dt} = -[V_{mem}(t) - V_{rest}] + RI(t) $$ 这个方程可以通过向前欧拉方法求得数值解，LIF神经元的激活函数$S(t)$表示如下$$S(t) = \begin{cases}0, & \text{if } v_{mem} < v_{thresh} \\1, & \text{if } v_{mem} \geq v_{thresh}\end{cases} $$ 可以明显看到这是一个非线性函数
+$$C\frac{dV}{dt} = -g_L(V(t) - E_L) + I(t) $$ 我们可以看到 $V(t)$ 取决于电阻的电导率$g_L$，电容 $C$， 静息电压 $E_L$ 和电流源 $I(t)$. 如果我们将上式乘一个膜电阻常数 $R$，我们可以得到膜时间常数 $\tau = RC$ 表示的 $\frac{dV_{mem}}{dt}$:
+$$\tau\frac{dV_{mem}}{dt} = -[V_{mem}(t) - V_{rest}] + RI(t) $$ 这个方程可以通过向前欧拉方法求得数值解，LIF神经元的激活函数$S(t)$表示如下$$S(t) = \begin{cases}0, & \text{if } v_{mem} < v_{thresh} \\1, & \text{if } v_{mem} \geq v_{thresh}\end{cases} $$ 可以明显看到这是一个非线性函数
 
 ##### Spike Response Model（SRM）
 
@@ -110,7 +110,7 @@ $$\tau_m\frac{dV_{mem}}{dt} = -[V_{mem}(t) - V_{rest}] + RI(t) $$ 这个方程�
 通过神经元接收到输入刺激后首次发放脉冲的时间来量化输入刺激的强度，尖峰和尖峰之间的精确时间用于编码信息。这包括与全局参考相关的绝对时间、不同神经元发出尖峰信号的相对时间，或者仅仅是神经元群产生特定尖峰信号的顺序。
 
 - **首达时间编码（Time-To-First-Spike TTFS）**：
-  给定时间窗口$T$下的脉冲尖峰数量平均值 $$t_{\text{spike}} = \min\{t \geq 0 \mid V(t) \geq V_{\text{thresh}}\}$$ 其中 $V(t)$ 是 $t$ 时刻膜电位
+  给定神经元下首个脉冲到达的时间 $$t_{\text{spike}} = \min\{t \geq 0 \mid V(t) \geq V_{\text{thresh}}\}$$ 其中 $V(t)$ 是 $t$ 时刻膜电位
 - **排名顺序编码（rank order coding ROC）**：
   基于脉冲发放的顺序而非发放频率来传递信息 $$S = \{t_1,t_2,\ldots,t_N\}$$ 其中 $t_i$ 是第 $i$ 个神经元发放脉冲的时间
 - **相位编码（phase coding）**：
@@ -251,22 +251,25 @@ $$U[t + 1] = \underbrace{\beta U[t]}_{\text{decay}} + \underbrace{W X[t+1]}_{\te
 考虑利用 snnTorch 创建一个 784-1000-10 维的 3 层全连接神经网络。PyTorch 用于形成神经元之间的连接，而 snnTorch 用于创建神经元。需要注意的是，snnTorch使用时间优先的维度，即
 $$[time \times batch\_size \times feature\_dimensions]$$ 其最终的结构大体如下
 
+![MNIST_3layers](figures/MNIST_3LaySNN.png){:height="75%" width="75%"}
+
 #### 网络训练
 
 LIF神经元的离散形式几乎完美地契合了训练循环神经网络（RNNs）和基于序列的模型的发展。这通过隐式递归连接来表示膜电位的衰减，并区别于显式递归，其中输出脉冲$S_{\text{out}}$被反馈到输入。在下图中，权重为$-U_{\text{thr}}$的连接表示重置机制$R[t]$。
 > 训练RNN的关键是将模型按时序展开，然后使用BP，这种方式常被称作时序反向传播（BPTT）
 
+![SNN的时序展开](figures/MNIST_recrep.png){:height="75%" width="75%"}
+
 展开图的优点在于它提供了对计算如何执行的明确描述。展开过程展示了信息在时间上的正向流动（从左到右）以计算输出和损失，以及反向流动以计算梯度。模拟的时间步数越多，图就越深。
 
 假定在训练时我们有我们有一个损失函数$\mathcal{L}$，我们的目标是找到$W$使$L$最小化，一个关键的问题是SNN中的激活函数本身是不可微的，考虑$S$和$U$之间关系的一种替代方法
 $$S[t] = \Theta(U[t] - U_{\text{thr}})$$ 其中$\Theta(x) = \begin{cases} 1 \quad x \geq 0 \\ 0 \quad else \end{cases}$ 是 Heaviside 阶跃函数，其对应的导数是狄拉克函数 $\delta(x) $，满足 $(f, \delta)_{L_p} = f(0)$，根据链式法则，对于损失函数关于$W$的梯度有
-$$\frac{\partial L}{\partial W} = \frac{\partial L}{\partial S} \underbrace{\frac{\partial S}{\partial U}}_{\{0,\infty\}} \frac{\partial U}{\partial I} \frac{\partial I}{\partial W}
-\quad$$ 显然可见它在除阈值 $U_{\mathrm{thr}} = \theta$外的所有地方都等于 0，在阈值处趋于无穷大。这意味着梯度几乎总是为零（如果$U$ 精确位于阈值处则饱和，无法进行学习）， 这被称为死神经元问题。
+$$\frac{\partial L}{\partial W} = \frac{\partial L}{\partial S} \underbrace{\frac{\partial S}{\partial U}}_{\{0,\infty\}} \frac{\partial U}{\partial I} \frac{\partial I}{\partial W}$$ 显然可见它在除阈值 $U_{\mathrm{thr}} = \theta$外的所有地方都等于 0，在阈值处趋于无穷大。这意味着梯度几乎总是为零（如果$U$ 精确位于阈值处则饱和，无法进行学习）， 这被称为死神经元问题。
 
 解决死亡神经元问题的最常见方法是在前向传播时保持 Heaviside 函数不变，但在反向传播时将数项 $\frac{\partial S}{\partial U}$替换为不会在反向传播中终止学习过程的其他项，该项将表示为$\frac{\partial \hat{S}}{\partial U}$。这听起来可能有些奇怪，但事实证明神经网络对这种近似非常鲁棒。这通常被称为替代梯度方法。
 
 使用替代梯度的方法有多种选择，snrTorch 中的默认方法是使用反正切函数平滑 Heaviside 函数。反向传播中使用的导数是：
-$$\frac{\partial \tilde{S}}{\partial \bar{U}} \leftarrow \frac{1}{\pi} \frac{1}{(1 + [U \pi]^2)}$$
+$$\frac{\partial \tilde{S}}{\partial \bar{U}} \leftarrow \frac{1}{\pi} \frac{1}{(1 + (U \pi)^2)}$$
 
 对于全局的损失函数，我们对每个时间步都计算损失，权重对当前和历史损失的影响必须加在一起来定义全局梯度，额外地，为了确保第$t$步后的参数不会对$t$步前的内容产生影响，我们还需要对其因果性进行限制，得到梯度如下：
 $$\frac{\partial\mathcal{L}}{\partial W}=\sum_{t}\frac{\partial\mathcal{L}[t]}{\partial W}=\sum_{t}\sum_{s\leq t}\frac{\partial\mathcal{L}[t]}{\partial W[s]}\frac{\partial W[s]}{\partial W}$$ 额外地，由于权重是全局共享的，因此我们有$W[s] = W$，即：
@@ -276,6 +279,8 @@ $$\frac{\partial\mathcal{L}}{\partial W}=\sum_{t}\sum_{s < t}\frac{\partial\math
 $$\begin{aligned}\frac{\partial \mathcal{L}[t]}{\partial W[t - 1]} &= \frac{\partial \mathcal{L}[t]}{\partial \mathcal{S}[t]} \frac{\partial \mathcal{S}[t]}{\partial U[t]} \frac{\partial U[t]}{\partial U[t - 1]} \frac{\partial U[t - 1]}{\partial I[t - 1]} \frac{\partial I[t - 1]}{\partial W[t - 1]} \\ &= \frac{\partial \mathcal{L}[t]}{\partial \mathcal{S}[t]} \frac{1}{\pi} \frac{1}{(1 + [U \pi]^2)} \beta X[t-1]\end{aligned}$$
 
 结果上，对于单个神经元，它BPTT后可能如图下所示
+
+![单个神经元的BPTT](figures/MNIST_bptt.png){:height="75%" width="75%"}
 
 #### 损失函数与输出解码
 
